@@ -11,6 +11,8 @@ import {
   trackPerformanceMetrics, 
   applyPerformanceOptimizations 
 } from './utils/performance';
+// Import mobile optimizations
+import { initMobileOptimizations } from './utils/mobileUtils';
 
 // Performance optimizations initialization
 const startTime = performance.now();
@@ -21,6 +23,13 @@ performance.mark('app-init-start');
 // Initialize performance tracking immediately
 const performanceTracking = trackPerformanceMetrics();
 console.log(`Performance tracking initialized: ${performanceTracking ? 'success' : 'failed'}`);
+
+// Apply mobile optimizations immediately to prevent refresh issues
+// This is intentionally not in a setTimeout to ensure it runs before any rendering
+if (/Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(navigator.userAgent)) {
+  console.log('Mobile device detected, applying optimizations');
+  initMobileOptimizations();
+}
 
 // Apply performance optimizations
 setTimeout(() => {
@@ -39,7 +48,28 @@ const App = lazy(() => import('./App').then(module => {
 const pwaPromise = Promise.resolve().then(() => {
   // Use idle callback if available
   const initWithTimeout = () => {
-    initPWA().catch(err => console.error('PWA initialization error:', err));
+    // Check if we already tried to init too many times
+    const initAttempts = parseInt(sessionStorage.getItem('pwaInitAttempts') || '0');
+    if (initAttempts > 3) {
+      console.warn('Too many PWA initialization attempts, skipping');
+      return;
+    }
+    
+    // Increment init counter
+    sessionStorage.setItem('pwaInitAttempts', (initAttempts + 1).toString());
+    
+    // Attempt to initialize PWA
+    initPWA()
+      .catch(err => console.error('PWA initialization error:', err))
+      .finally(() => {
+        // Reset counter after a delay to allow future attempts
+        setTimeout(() => {
+          const currentAttempts = parseInt(sessionStorage.getItem('pwaInitAttempts') || '0');
+          if (currentAttempts > 0) {
+            sessionStorage.setItem('pwaInitAttempts', '0');
+          }
+        }, 60000); // Reset after 1 minute
+      });
   };
   
   if ('requestIdleCallback' in window) {
@@ -238,85 +268,54 @@ window.addEventListener('load', () => {
     }
     
     // Initialize PWA features and enhancements when app is fully loaded
-    Promise.all([
-      import('./utils/pwa').then(({ initPWA }) => initPWA()),
-      import('./utils/pwaEnhancements').then(({ initPWAEnhancements }) => initPWAEnhancements()),
-      import('./utils/serviceWorkerUtils').then(({ initServiceWorkerUpdates }) => initServiceWorkerUpdates())
-    ]).then(([pwaResult, enhancementsResult]) => {
-      if (pwaResult && enhancementsResult) {
-        console.log('PWA features and enhancements initialized successfully');
-      }
-    });
+    const initPromises = [];
     
-    // Register service worker update listener after app is ready
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-      window.addEventListener('sw-update-available', (event) => {
-        console.log('Service worker update available!');
-        
-        // Check if notification was shown in this session
-        const lastNotificationTime = sessionStorage.getItem('updateNotificationShown');
-        const currentTime = Date.now();
-        
-        // Show notification if not shown yet or it's been more than 6 hours
-        if (!lastNotificationTime || (currentTime - parseInt(lastNotificationTime)) > 6 * 60 * 60 * 1000) {
-          // Update the timestamp
-          sessionStorage.setItem('updateNotificationShown', currentTime.toString());
-          
-          // Show update notification after a delay
-          setTimeout(() => {
-            // If we have a toast component available, use it
-            if (window.dispatchEvent) {
-              window.dispatchEvent(new CustomEvent('show-toast', { 
-                detail: { 
-                  message: 'New version available! Refresh to update.',
-                  type: 'info',
-                  duration: 30000, // Longer duration to give user time to see it
-                  action: {
-                    label: 'Refresh',
-                    onClick: async () => {
-                      try {
-                        // Flag that we're intentionally reloading to apply update
-                        (document as any).isReloading = true;
-                        
-                        // Get the service worker registration from the event
-                        const registration = (event as CustomEvent).detail?.registration;
-                        
-                        // If we have direct access to the registration, use it
-                        if (registration && registration.waiting) {
-                          console.log('Sending skip waiting message to service worker');
-                          // Tell the service worker to skip waiting
-                          registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-                          
-                          // The service worker will take control and reload will happen
-                          // in the controllerchange event (already handled in ServiceWorkerUpdateNotification)
-                          return;
-                        }
-                        
-                        // Fallback: try to get registrations
-                        const registrations = await navigator.serviceWorker.getRegistrations();
-                        if (registrations.length > 0 && registrations[0].waiting) {
-                          console.log('Sending skip waiting message via registrations');
-                          registrations[0].waiting.postMessage({ type: 'SKIP_WAITING' });
-                          return;
-                        }
-                        
-                        // If all else fails, just reload
-                        console.log('No waiting service worker found, refreshing page directly');
-                        window.location.reload();
-                      } catch (error) {
-                        console.error('Error during refresh:', error);
-                        window.location.reload(); // Fallback
-                      }
-                    }
-                  }
-                } 
-              }));
-            }
-          }, 3000);
+    // Check if we're reloading too frequently
+    const lastInitTime = parseInt(sessionStorage.getItem('lastPWAInitTime') || '0');
+    const now = Date.now();
+    const timeSinceLastInit = now - lastInitTime;
+    
+    // Only initialize if enough time has passed since last init (prevent fast reload loops)
+    if (timeSinceLastInit > 10000) { // 10 seconds minimum between inits
+      sessionStorage.setItem('lastPWAInitTime', now.toString());
+      
+      // Queue each initialization promise
+      initPromises.push(
+        import('./utils/pwa').then(({ initPWA }) => initPWA())
+          .catch(err => {
+            console.error('PWA init error:', err);
+            return false;
+          })
+      );
+      
+      initPromises.push(
+        import('./utils/pwaEnhancements').then(({ initPWAEnhancements }) => initPWAEnhancements())
+          .catch(err => {
+            console.error('PWA enhancements error:', err);
+            return false;
+          })
+      );
+      
+      initPromises.push(
+        import('./utils/serviceWorkerUtils').then(({ initServiceWorkerUpdates }) => initServiceWorkerUpdates())
+          .catch(err => {
+            console.error('Service worker updates error:', err);
+            return false;
+          })
+      );
+      
+      // Wait for all promises to complete
+      Promise.all(initPromises).then(results => {
+        if (results.every(Boolean)) {
+          console.log('PWA features and enhancements initialized successfully');
+        } else {
+          console.warn('Some PWA features failed to initialize');
         }
       });
+    } else {
+      console.warn(`Skipping PWA initialization - last init was ${timeSinceLastInit}ms ago`);
     }
-  }, 800);
+  }, 300); // Reduced from higher value for better performance
 });
 
 // Measure and log render completion time

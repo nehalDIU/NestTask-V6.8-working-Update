@@ -26,16 +26,46 @@ export function preventPinchZoom() {
  * but leaves alone the top 100px of the page to allow our custom pull-to-refresh
  */
 export function preventPullToRefresh() {
+  let startY = 0;
+  
+  // Track touch start position
+  document.addEventListener('touchstart', (e) => {
+    startY = e.touches[0].clientY;
+  }, { passive: true });
+  
+  // Prevent default on touchmove with more precise conditions
   document.addEventListener('touchmove', (e) => {
-    // Only prevent default if:
-    // 1. We're at the top of the page (scrollY === 0)
-    // 2. Touch is below the safe zone (top 100px reserved for our custom component)
-    // 3. We're pulling down (moving finger downward)
-    if (window.scrollY === 0 && 
-        e.touches[0].clientY > 100 && 
-        e.touches.length === 1) {
+    // Only prevent pull-to-refresh when:
+    // 1. We're at the top of the page (scrollY very small)
+    // 2. We're pulling down (moving finger downward)
+    // 3. Not inside an interactive element like input, scrollable div
+    const touchY = e.touches[0].clientY;
+    const touchYDelta = touchY - startY;
+    const target = e.target as HTMLElement;
+    const isFormElement = target.tagName === 'INPUT' || 
+                          target.tagName === 'TEXTAREA' || 
+                          target.tagName === 'SELECT';
+    
+    // Check if element or any parent is scrollable and not at top
+    const isScrollableElement = (el: HTMLElement | null): boolean => {
+      if (!el) return false;
+      if (el === document.body || el === document.documentElement) return false;
       
-      // This is likely the browser's overscroll effect, not our custom pull
+      const style = window.getComputedStyle(el);
+      const overflowY = style.getPropertyValue('overflow-y');
+      const isScrollable = overflowY === 'scroll' || overflowY === 'auto';
+      
+      return (isScrollable && el.scrollTop > 0) || isScrollableElement(el.parentElement);
+    };
+    
+    // Allow pull-to-refresh in our custom header zone (first 100px)
+    const isInCustomPullZone = touchY < 100;
+    
+    if (window.scrollY <= 5 && 
+        touchYDelta > 0 && 
+        !isFormElement && 
+        !isScrollableElement(target) && 
+        !isInCustomPullZone) {
       e.preventDefault();
     }
   }, { passive: false });

@@ -156,6 +156,34 @@ self.addEventListener('fetch', (event) => {
 
   // Handle navigation requests (HTML pages) - network first with offline fallback
   if (event.request.mode === 'navigate') {
+    // Add safeguard to prevent reload loops
+    const hasReloadLoopParam = requestUrl.searchParams.has('reload_attempt');
+    
+    // If this URL is already flagged as potentially having a reload issue, serve from cache only
+    if (hasReloadLoopParam) {
+      console.log('[ServiceWorker] Potential reload loop detected, serving from cache only');
+      
+      event.respondWith(
+        caches.match(event.request)
+          .then(cachedResponse => {
+            if (cachedResponse) {
+              return cachedResponse;
+            }
+            
+            return caches.match(OFFLINE_URL)
+              .then(offlinePage => {
+                if (offlinePage) {
+                  return offlinePage;
+                }
+                
+                // Last resort - attempt a clean fetch but don't cache
+                return fetch(event.request);
+              });
+          })
+      );
+      return;
+    }
+    
     event.respondWith(
       fetch(event.request)
         .then(response => {
@@ -184,8 +212,39 @@ self.addEventListener('fetch', (event) => {
                 return cachedResponse;
               }
               
-              console.log('[ServiceWorker] Serving offline page');
-              return caches.match(OFFLINE_URL);
+              // Check if this is likely a reload loop by using cache as a counter storage
+              return caches.open('reload-detection')
+                .then(cache => {
+                  return cache.match('navigation-failures')
+                    .then(countResponse => {
+                      return countResponse ? countResponse.json() : { count: 0 };
+                    })
+                    .then(data => {
+                      const currentCount = data.count || 0;
+                      
+                      if (currentCount > 2) {
+                        // Reset counter
+                        cache.put('navigation-failures', new Response(JSON.stringify({ count: 0 }), {
+                          headers: { 'Content-Type': 'application/json' }
+                        }));
+                        
+                        // Add parameter to detect potential reload loops
+                        const loopBreaker = new URL(event.request.url);
+                        loopBreaker.searchParams.set('reload_attempt', 'true');
+                        
+                        console.log('[ServiceWorker] Multiple fetch failures detected, navigating to loop breaker URL');
+                        return Response.redirect(loopBreaker.toString(), 302);
+                      } else {
+                        // Increment counter
+                        cache.put('navigation-failures', new Response(JSON.stringify({ count: currentCount + 1 }), {
+                          headers: { 'Content-Type': 'application/json' }
+                        }));
+                        
+                        console.log('[ServiceWorker] Serving offline page');
+                        return caches.match(OFFLINE_URL);
+                      }
+                    });
+                });
             });
         })
     );

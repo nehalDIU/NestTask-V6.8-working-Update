@@ -1,3 +1,33 @@
+/* Add these rules to the top of the CSS file */
+
+/* Prevent pull-to-refresh behavior on mobile */
+html {
+  height: 100%;
+  overscroll-behavior-y: contain;
+  position: fixed;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  height: 100%;
+  width: 100%;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+/* This prevents mobile browsers from showing the "pull to refresh" behavior */
+@supports (-webkit-touch-callout: none) {
+  body {
+    /* iOS Safari specific overrides */
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+  }
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

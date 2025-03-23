@@ -154,6 +154,17 @@ export default function App() {
   // Initialize and register service worker
   useEffect(() => {
     const initializeServiceWorker = async () => {
+      // Check if we've already attempted to register the service worker in this session
+      const hasAttempted = sessionStorage.getItem('serviceWorkerInitAttempted');
+      
+      if (hasAttempted === 'true') {
+        console.log('Service worker initialization already attempted in this session, skipping');
+        return;
+      }
+      
+      // Mark that we've attempted service worker registration
+      sessionStorage.setItem('serviceWorkerInitAttempted', 'true');
+      
       if ('serviceWorker' in navigator) {
         try {
           const registration = await registerServiceWorker();
@@ -170,10 +181,12 @@ export default function App() {
     };
     
     // Initialize after a short delay to prioritize app loading
-    setTimeout(() => {
+    const timerId = setTimeout(() => {
       initializeServiceWorker();
     }, 2000);
-  }, []);
+    
+    return () => clearTimeout(timerId);
+  }, []); // Empty dependency array ensures this only runs once
 
   // Calculate today's task count - always compute this value regardless of rendering path
   const todayTaskCount = useMemo(() => {
