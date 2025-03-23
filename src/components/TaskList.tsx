@@ -1,8 +1,8 @@
 import { Task } from '../types/task';
 import { 
-  Crown, 
   Calendar, 
   Clock,
+  CheckCircle2,
   BookOpen,
   PenSquare,
   Presentation,
@@ -15,15 +15,17 @@ import {
   GraduationCap,
   Tag,
   Folder,
-  ChevronRight,
-  CheckCircle2,
-  MoreVertical,
   Trash2,
-  WifiOff
+  WifiOff,
+  RefreshCw,
+  X,
+  Check,
+  Loader2,
+  Crown
 } from 'lucide-react';
 import { isOverdue } from '../utils/dateUtils';
 import { parseLinks } from '../utils/linkParser';
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { TaskDetailsPopup } from './task/TaskDetailsPopup';
 import { useOfflineStatus } from '../hooks/useOfflineStatus';
 import { PullToRefresh } from './ui/PullToRefresh';
@@ -46,15 +48,53 @@ export function TaskList({
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const isOffline = useOfflineStatus();
-
-  // Initialize pull-to-refresh hook
-  const { refreshProps, isRefreshing } = usePullToRefresh({
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  
+  // Enhanced pull-to-refresh hook with better feedback
+  const { isRefreshing, startRefresh, refreshProps } = usePullToRefresh({
     onRefresh: async () => {
       if (onRefresh) {
-        await onRefresh();
+        try {
+          // Show toast notification that refresh has started
+          window.dispatchEvent(new CustomEvent('show-toast', { 
+            detail: { 
+              message: 'Refreshing tasks...',
+              type: 'info',
+              duration: 1000
+            } 
+          }));
+          
+          await onRefresh();
+          
+          // Show success toast on completion
+          window.dispatchEvent(new CustomEvent('show-toast', { 
+            detail: { 
+              message: 'Tasks updated successfully',
+              type: 'success',
+              duration: 2000
+            } 
+          }));
+          
+          return true;
+        } catch (error) {
+          console.error('Error refreshing tasks:', error);
+          
+          // Show error toast
+          window.dispatchEvent(new CustomEvent('show-toast', { 
+            detail: { 
+              message: 'Failed to refresh tasks',
+              type: 'error',
+              duration: 3000
+            } 
+          }));
+          
+          throw error;
+        }
       }
+      return Promise.resolve(false);
     },
-    disabled: !onRefresh || isOffline // Disable pull-to-refresh when offline or onRefresh not provided
+    disabled: !onRefresh,
+    refreshTimeout: 1200 // Show refresh animation for at least 1.2 seconds for better UX
   });
 
   // Sort tasks to move completed tasks to the bottom and handle overdue tasks
@@ -127,10 +167,18 @@ export function TaskList({
     }
   };
 
+  // Empty state with enhanced PullToRefresh
   if (sortedTasks.length === 0) {
-    // Wrap empty state in PullToRefresh if onRefresh provided
     return onRefresh ? (
-      <PullToRefresh {...refreshProps}>
+      <PullToRefresh 
+        {...refreshProps}
+        pullDownThreshold={70}
+        maxPullDownDistance={150}
+        refreshIndicatorHeight={65}
+        successMessage="Tasks updated successfully"
+        showSuccessMessage={true}
+        backgroundColor="bg-gradient-to-b from-gray-50 to-white dark:from-gray-800 dark:to-gray-900"
+      >
         <div className="text-center py-8 sm:py-12 animate-fade-in">
           <img
             src="https://images.unsplash.com/photo-1496115965489-21be7e6e59a0?auto=format&fit=crop&q=80&w=400"
@@ -139,7 +187,7 @@ export function TaskList({
           />
           <p className="text-gray-500 dark:text-gray-400 text-base sm:text-lg font-medium">No tasks found in this category</p>
           <p className="text-gray-400 dark:text-gray-500 mt-2 text-sm sm:text-base">
-            {isRefreshing ? 'Refreshing...' : 'Pull down to refresh or add some new tasks!'}
+            {isRefreshing ? 'Refreshing tasks...' : 'Pull down to refresh or add some new tasks!'}
           </p>
         </div>
       </PullToRefresh>
@@ -157,7 +205,7 @@ export function TaskList({
   }
 
   const taskListContent = (
-    <div className="space-y-4">
+    <>
       {isOffline && (
         <div className="mb-4 p-3 bg-blue-50 rounded-lg flex items-center gap-2 text-sm text-blue-700 border border-blue-100">
           <WifiOff className="h-4 w-4 text-blue-500" />
@@ -169,6 +217,22 @@ export function TaskList({
         <div className="mb-4 p-3 bg-green-50 rounded-lg flex items-center gap-2 text-sm text-green-700 border border-green-100">
           <Clock className="h-4 w-4 text-green-500" />
           <p>Refreshing tasks...</p>
+        </div>
+      )}
+      
+      {/* Refresh button row */}
+      {onRefresh && (
+        <div className="mb-4 flex justify-end">
+          <button 
+            className={`p-1.5 rounded-full ${
+              isOffline ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed' : 'text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20'
+            }`}
+            onClick={() => !isOffline && !isRefreshing && startRefresh()}
+            disabled={isOffline || isRefreshing}
+            title={isOffline ? 'Cannot refresh while offline' : 'Refresh tasks'}
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </button>
         </div>
       )}
       
@@ -321,7 +385,64 @@ export function TaskList({
                       {task.status === 'completed' ? 'Complete' : overdue ? 'Overdue' : 'In Progress'}
                     </span>
                   </div>
-
+                  
+                  {/* Delete button for admins */}
+                  {showDeleteButton && onDeleteTask && (
+                    <div>
+                      {confirmingDelete === task.id ? (
+                        <div className="flex space-x-1">
+                          <button
+                            className="p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsDeleting(true);
+                              setDeletingTaskId(task.id);
+                              
+                              if (onDeleteTask) {
+                                try {
+                                  onDeleteTask(task.id);
+                                } finally {
+                                  // Reset states after deletion attempt
+                                  setTimeout(() => {
+                                    setIsDeleting(false);
+                                    setConfirmingDelete(null);
+                                  }, 500); // Short delay for better UX
+                                }
+                              }
+                            }}
+                            disabled={isDeleting}
+                          >
+                            {isDeleting && deletingTaskId === task.id ? (
+                              <Loader2 className="w-5 h-5 animate-spin" />
+                            ) : (
+                              <Check className="w-5 h-5" />
+                            )}
+                          </button>
+                          <button
+                            className="p-1 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmingDelete(null);
+                            }}
+                            disabled={isDeleting}
+                          >
+                            <X className="w-5 h-5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          className="p-1 text-gray-500 hover:text-red-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmingDelete(task.id);
+                          }}
+                          disabled={isDeleting}
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Mobile-only touch feedback */}
@@ -341,13 +462,27 @@ export function TaskList({
           onClose={() => setSelectedTask(null)}
         />
       )}
-    </div>
+    </>
   );
 
   // Wrap with PullToRefresh if onRefresh is provided
   return onRefresh ? (
-    <PullToRefresh {...refreshProps}>
-      {taskListContent}
+    <PullToRefresh 
+      {...refreshProps}
+      pullDownThreshold={70}
+      maxPullDownDistance={150}
+      refreshIndicatorHeight={65}
+      successMessage="Tasks updated successfully"
+      showSuccessMessage={true}
+      backgroundColor="bg-gradient-to-b from-gray-50 to-white dark:from-gray-800 dark:to-gray-900"
+    >
+      <div className="space-y-4">
+        {taskListContent}
+      </div>
     </PullToRefresh>
-  ) : taskListContent;
+  ) : (
+    <div className="space-y-4">
+      {taskListContent}
+    </div>
+  );
 }
