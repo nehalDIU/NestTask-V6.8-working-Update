@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0284c7">
+  <title>NestTask - You're Offline</title>
+  <link rel="icon" href="/icons/icon-192x192.png">
+  <style>
+    :root {
+      --primary-color: #0284c7;
+      --text-color: #1e293b;
+      --bg-color: #f8fafc;
+      --card-bg: #ffffff;
+      --border-color: #e2e8f0;
+      --error-color: #ef4444;
+      --success-color: #10b981;
+    }
+    
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+    
+    /* Dark mode support */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --text-color: #e2e8f0;
+        --bg-color: #0f172a;
+        --card-bg: #1e293b;
+        --border-color: #334155;
+      }
+    }
+    
+    .container {
+      max-width: 500px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 100%;
+    }
+    
+    .card {
+      background-color: var(--card-bg);
+      border-radius: 1rem;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+      padding: 2rem;
+      width: 100%;
+      text-align: center;
+      margin-bottom: 2rem;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .logo {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 1.5rem;
+      animation: pulse 2s infinite;
+      border-radius: 12px;
+    }
+    
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin: 0 0 1rem;
+    }
+    
+    p {
+      font-size: 1rem;
+      margin: 0 0 1.5rem;
+      opacity: 0.9;
+    }
+    
+    .btn {
+      display: inline-block;
+      background-color: var(--primary-color);
+      color: white;
+      font-weight: 600;
+      font-size: 0.875rem;
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.5rem;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin: 0 0.25rem;
+    }
+    
+    .btn:hover {
+      opacity: 0.9;
+      transform: translateY(-2px);
+    }
+    
+    .btn:active {
+      transform: translateY(0);
+    }
+    
+    .btn-outline {
+      background-color: transparent;
+      color: var(--primary-color);
+      border: 1px solid var(--primary-color);
+    }
+    
+    .status {
+      display: flex;
+      align-items: center;
+      font-size: 0.875rem;
+      color: var(--text-color);
+      margin-top: 1rem;
+    }
+    
+    .status-indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background-color: var(--error-color);
+      margin-right: 0.5rem;
+    }
+    
+    .status-indicator.online {
+      background-color: var(--success-color);
+    }
+    
+    .cached-content {
+      margin-top: 1.5rem;
+      text-align: left;
+      padding: 1rem;
+      background-color: var(--bg-color);
+      border-radius: 0.5rem;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    
+    .cached-item {
+      padding: 0.5rem;
+      border-bottom: 1px solid var(--border-color);
+      font-size: 0.875rem;
+    }
+    
+    .cached-item:last-child {
+      border-bottom: none;
+    }
+    
+    .animation-container {
+      position: relative;
+      width: 100%;
+      height: 60px;
+      margin-bottom: 1rem;
+    }
+    
+    .wifi-symbol {
+      width: 50px;
+      height: 50px;
+      position: relative;
+      margin: 0 auto;
+    }
+    
+    .wifi-circle {
+      border: 3px solid var(--primary-color);
+      border-radius: 50%;
+      position: absolute;
+      left: 0;
+      right: 0;
+      margin: 0 auto;
+      opacity: 0;
+      animation: wifi-wave 2s infinite;
+    }
+    
+    .wifi-circle.one {
+      width: 15px;
+      height: 15px;
+      animation-delay: 0s;
+    }
+    
+    .wifi-circle.two {
+      width: 30px;
+      height: 30px;
+      animation-delay: 0.5s;
+    }
+    
+    .wifi-circle.three {
+      width: 45px;
+      height: 45px;
+      animation-delay: 1s;
+    }
+    
+    @keyframes wifi-wave {
+      0% {
+        transform: scale(1);
+        opacity: 0.2;
+      }
+      50% {
+        opacity: 0.5;
+      }
+      100% {
+        transform: scale(1.4);
+        opacity: 0;
+      }
+    }
+    
+    @keyframes pulse {
+      0% {
+        transform: scale(1);
+        opacity: 1;
+      }
+      50% {
+        transform: scale(1.05);
+        opacity: 0.8;
+      }
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+    
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <img src="/icons/icon-192x192.png" alt="NestTask Logo" class="logo">
+      <div class="animation-container">
+        <div class="wifi-symbol">
+          <div class="wifi-circle one"></div>
+          <div class="wifi-circle two"></div>
+          <div class="wifi-circle three"></div>
+        </div>
+      </div>
+      <h1>You're Offline</h1>
+      <p>Please check your internet connection and try again. Some features may still be available offline.</p>
+      
+      <div>
+        <button class="btn" id="retry-button">Retry Connection</button>
+        <button class="btn btn-outline" id="offline-button">Use Offline Mode</button>
+      </div>
+      
+      <div class="status">
+        <span class="status-indicator" id="status-indicator"></span>
+        <span id="connection-status">Offline</span>
+      </div>
+      
+      <div id="cached-content" class="cached-content hidden">
+        <h3>Available Offline:</h3>
+        <div id="cached-items">
+          <!-- Cached items will be populated by JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Update connection status
+    function updateConnectionStatus() {
+      const indicator = document.getElementById('status-indicator');
+      const status = document.getElementById('connection-status');
+      
+      if (navigator.onLine) {
+        indicator.classList.add('online');
+        status.textContent = 'Back Online';
+        
+        // Redirect back to the app after a short delay
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 2000);
+      } else {
+        indicator.classList.remove('online');
+        status.textContent = 'Offline';
+      }
+    }
+    
+    // Check for cached content
+    async function checkCachedContent() {
+      if ('caches' in window) {
+        try {
+          // Check for cached items
+          const cache = await caches.open('nesttask-v3');
+          const keys = await cache.keys();
+          
+          const cachedContent = document.getElementById('cached-content');
+          const cachedItems = document.getElementById('cached-items');
+          
+          if (keys.length > 0) {
+            cachedContent.classList.remove('hidden');
+            
+            // Show the first 5 cached URLs that aren't assets or icons
+            const displayItems = keys
+              .filter(key => {
+                const url = new URL(key.url);
+                return !url.pathname.match(/\.(js|css|png|jpg|svg)$/) && 
+                       !url.pathname.includes('/assets/') &&
+                       !url.pathname.includes('/icons/');
+              })
+              .slice(0, 5);
+            
+            displayItems.forEach(item => {
+              const url = new URL(item.url);
+              const div = document.createElement('div');
+              div.className = 'cached-item';
+              div.textContent = url.pathname || '/';
+              div.addEventListener('click', () => {
+                window.location.href = url.pathname;
+              });
+              cachedItems.appendChild(div);
+            });
+            
+            if (displayItems.length === 0) {
+              cachedContent.classList.add('hidden');
+            }
+          }
+        } catch (error) {
+          console.error('Error checking cache:', error);
+        }
+      }
+    }
+    
+    // Event listeners
+    document.getElementById('retry-button').addEventListener('click', () => {
+      // Force reload from server
+      window.location.reload();
+    });
+    
+    document.getElementById('offline-button').addEventListener('click', () => {
+      // Attempt to navigate to the home page
+      window.location.href = '/';
+    });
+    
+    // Update status when network state changes
+    window.addEventListener('online', updateConnectionStatus);
+    window.addEventListener('offline', updateConnectionStatus);
+    
+    // Initialize
+    updateConnectionStatus();
+    checkCachedContent();
+  </script>
+</body>
+</html>
