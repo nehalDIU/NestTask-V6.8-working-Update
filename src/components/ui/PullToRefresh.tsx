@@ -27,13 +27,14 @@ export function PullToRefresh({
   className = '',
   disabled = false,
 }: PullToRefreshProps) {
-  const [isPulling, setIsPulling] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const startYRef = useRef<number | null>(null);
-  const currentYRef = useRef<number | null>(null);
-  const lastScrollTopRef = useRef(0);
+  
+  // Track touch state with refs
+  const startY = useRef<number | null>(null);
+  const currentY = useRef<number | null>(null);
+  const isPulling = useRef(false);
   
   const shouldRefresh = pullDistance >= pullDownThreshold;
 
@@ -41,6 +42,7 @@ export function PullToRefresh({
   const handleRefresh = async () => {
     if (isRefreshing || disabled) return;
     
+    console.log('Starting refresh...');
     setIsRefreshing(true);
     
     try {
@@ -48,68 +50,77 @@ export function PullToRefresh({
     } catch (error) {
       console.error('Error refreshing:', error);
     } finally {
-      // Add a small delay to make the refresh indicator visible
       setTimeout(() => {
         setIsRefreshing(false);
         setPullDistance(0);
-      }, 600);
+      }, 800);
     }
   };
 
-  // Touch event handlers
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (disabled || isRefreshing) return;
+  // Setup global event listeners - this is key for Facebook-style top swipe
+  useEffect(() => {
+    if (disabled) return;
     
-    const scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
-    lastScrollTopRef.current = scrollTop;
+    // These handlers will be attached to the document for top-level capture
+    const handleTouchStart = (e: TouchEvent) => {
+      // Only capture touches that start very close to the top of the viewport
+      if (e.touches[0].clientY < 60 && window.scrollY === 0) {
+        startY.current = e.touches[0].clientY;
+        currentY.current = startY.current;
+        isPulling.current = true;
+        console.log('Touch near top detected:', startY.current);
+      }
+    };
     
-    // Only enable pull-to-refresh when at the top of the content
-    if (scrollTop <= 0) {
-      startYRef.current = e.touches[0].clientY;
-      currentYRef.current = startYRef.current;
-      setIsPulling(true);
-    }
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isPulling || disabled || isRefreshing) return;
-    
-    const scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
-    
-    // If scrolled down, cancel the pull-to-refresh
-    if (scrollTop > 0) {
-      startYRef.current = null;
-      setIsPulling(false);
-      setPullDistance(0);
-      return;
-    }
-    
-    if (startYRef.current !== null) {
-      currentYRef.current = e.touches[0].clientY;
-      const deltaY = Math.max(0, currentYRef.current - startYRef.current);
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isPulling.current || isRefreshing) return;
       
-      // Apply a resistance factor to make the pull feel more natural
-      const resistanceFactor = 0.4;
-      const distance = Math.min(maxPullDownDistance, deltaY * resistanceFactor);
+      currentY.current = e.touches[0].clientY;
       
-      setPullDistance(distance);
-    }
-  };
-
-  const handleTouchEnd = () => {
-    if (!isPulling || disabled || isRefreshing) return;
+      if (startY.current !== null && currentY.current !== null) {
+        const deltaY = Math.max(0, currentY.current - startY.current);
+        
+        // Start pull effect once we've moved a minimum distance (10px)
+        if (deltaY > 10) {
+          // Prevent the browser's native pull-to-refresh
+          e.preventDefault();
+          
+          // Calculate distance with resistance (like Facebook)
+          const resistance = 0.4;
+          const distance = Math.min(maxPullDownDistance, deltaY * resistance);
+          
+          setPullDistance(distance);
+        }
+      }
+    };
     
-    setIsPulling(false);
+    const handleTouchEnd = () => {
+      if (!isPulling.current || isRefreshing) return;
+      
+      isPulling.current = false;
+      
+      if (shouldRefresh) {
+        handleRefresh();
+      } else {
+        setPullDistance(0);
+      }
+      
+      startY.current = null;
+      currentY.current = null;
+    };
     
-    if (shouldRefresh) {
-      handleRefresh();
-    } else {
-      setPullDistance(0);
-    }
+    // Add event listeners to document for top-level capture
+    document.addEventListener('touchstart', handleTouchStart, { passive: true });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd, { passive: true });
     
-    startYRef.current = null;
-    currentYRef.current = null;
-  };
+    // Clean up
+    return () => {
+      document.removeEventListener('touchstart', handleTouchStart);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [disabled, isRefreshing, maxPullDownDistance, pullDownThreshold, shouldRefresh]);
 
   // Custom indicator components
   const DefaultLoadingIndicator = (
@@ -137,14 +148,11 @@ export function PullToRefresh({
   return (
     <div
       ref={containerRef}
-      className={`pull-to-refresh-container relative overflow-hidden ${className}`}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
+      className={`pull-to-refresh-container relative overflow-visible ${className}`}
     >
-      {/* Pull-to-refresh indicator */}
+      {/* Fixed-position Pull-to-refresh indicator at the top of viewport */}
       <motion.div 
-        className="absolute left-0 right-0 flex items-center justify-center overflow-hidden z-10 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700"
+        className="fixed left-0 right-0 top-0 flex items-center justify-center overflow-hidden z-50 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-md"
         initial={{ height: 0, opacity: 0 }}
         animate={{ 
           height: isRefreshing ? refreshIndicatorHeight : pullDistance, 
@@ -163,7 +171,7 @@ export function PullToRefresh({
 
       {/* Content with translation */}
       <motion.div
-        className="pull-to-refresh-content"
+        className="will-change-transform"
         animate={{ 
           y: isRefreshing ? refreshIndicatorHeight : pullDistance 
         }}

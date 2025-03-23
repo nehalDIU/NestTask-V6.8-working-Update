@@ -22,28 +22,20 @@ export function preventPinchZoom() {
 }
 
 /**
- * Prevents pull-to-refresh behavior on mobile devices
- * except for elements with the class 'pull-to-refresh-container'
+ * Prevents native browser pull-to-refresh behavior on mobile devices,
+ * but leaves alone the top 100px of the page to allow our custom pull-to-refresh
  */
 export function preventPullToRefresh() {
-  let startY: number;
-  
-  document.addEventListener('touchstart', (e) => {
-    startY = e.touches[0].pageY;
-  }, { passive: true });
-  
   document.addEventListener('touchmove', (e) => {
-    // Skip prevention if the event originated from our pull-to-refresh component
-    if (e.target instanceof Element) {
-      const pullToRefreshContainer = e.target.closest('.pull-to-refresh-container');
-      if (pullToRefreshContainer) {
-        return; // Allow the pull-to-refresh container to handle the event
-      }
-    }
-    
-    const y = e.touches[0].pageY;
-    // Prevent overscroll when already at the top
-    if (document.scrollingElement!.scrollTop === 0 && y > startY) {
+    // Only prevent default if:
+    // 1. We're at the top of the page (scrollY === 0)
+    // 2. Touch is below the safe zone (top 100px reserved for our custom component)
+    // 3. We're pulling down (moving finger downward)
+    if (window.scrollY === 0 && 
+        e.touches[0].clientY > 100 && 
+        e.touches.length === 1) {
+      
+      // This is likely the browser's overscroll effect, not our custom pull
       e.preventDefault();
     }
   }, { passive: false });
